@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\Article;
+
 it('guest users cannot create articles', function () {
 
     $data = Article::factory()->raw();
