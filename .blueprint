@@ -1,0 +1,10 @@
+created:
+    - database/factories/ArticleFactory.php
+    - database/factories/CategoryFactory.php
+    - database/migrations/2026_05_12_225922_create_articles_table.php
+    - database/migrations/2026_05_12_225923_create_categories_table.php
+    - app/Models/Article.php
+    - app/Models/Category.php
+models:
+    Article: { title: string, slug: 'string unique', content: longtext, category_id: id, user_id: id }
+    Category: { name: string, slug: 'string unique', relationships: { hasMany: Article } }

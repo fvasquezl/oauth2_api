@@ -6,20 +6,21 @@ use Illuminate\Foundation\Configuration\Middleware;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
-        web: __DIR__.'/../routes/web.php',
-        commands: __DIR__.'/../routes/console.php',
+        web: __DIR__ . '/../routes/web.php',
+        commands: __DIR__ . '/../routes/console.php',
         health: '/up',
         using: function () {
             Route::middleware('api')
-                ->prefix('api/v1')
-                ->name('api.v1.')
-                ->group(base_path('routes/api.php'));
-
-        }
+            ->prefix('api')
+            ->name('api.')
+            ->group(base_path('routes/api.php'));
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         //
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
-    })->create();
+        $exceptions->dontReport(\LaravelJsonApi\Core\Exceptions\JsonApiException::class);
+        $exceptions->render(\LaravelJsonApi\Exceptions\ExceptionParser::renderer());
+    })
+    ->create();

@@ -1,0 +1,14 @@
+models:
+  Article:
+    title: string
+    slug: string unique
+    content: longtext
+    category_id: id
+    user_id: id
+    approved: boolean default:false
+
+  Category:
+    name: string
+    slug: string unique
+    relationships:
+      hasMany: Article

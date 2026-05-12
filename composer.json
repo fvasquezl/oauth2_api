@@ -10,12 +10,17 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "laravel-json-api/laravel": "^5.2",
         "laravel/framework": "^13.7",
         "laravel/passport": "^13.0",
-        "laravel/tinker": "^3.0"
+        "laravel/tinker": "^3.0",
+        "spatie/laravel-permission": "^7.4"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
+        "jasonmccreary/laravel-test-assertions": "^2.9",
+        "laravel-json-api/testing": "^3.2",
+        "laravel-shift/blueprint": "^2.13",
         "laravel/pail": "^1.2.5",
         "laravel/pao": "^1.0.6",
         "laravel/pint": "^1.27",

@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -44,7 +46,80 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+function jsonData(Model $model): array
 {
-    // ..
+    $type = Str::plural(Str::kebab(class_basename($model)));
+    $exclude = ['id', 'created_at', 'updated_at', 'deleted_at'];
+    $attributes = getModelAttributes($model, $exclude);
+    $relationships = getModelRelationships($model);
+
+    $data = [
+        'type' => $type,
+        'attributes' => $attributes,
+    ];
+    
+    if ($relationships){
+        $data['relationships'] = $relationships;
+    }
+
+    if ($model->exists) {
+        $data['id'] = (string) $model->getRouteKey();
+    }
+
+    return $data;
 }
+
+function getModelAttributes(Model $model, array $exclude = []): array
+{
+    return collect($model->getAttributes())
+        ->except($exclude)
+        ->filter(fn($value, $key) => !str_ends_with($key, '_id'))
+        ->toArray();
+}
+
+function getModelRelationships(Model $model): array
+{
+    $relations = modelRelationNames($model);
+
+    if (empty($relations)) {
+        return [];
+    }
+
+    return collect($relations)
+        ->mapWithKeys(function (string $relation) use ($model): array {
+            $related = $model->$relation;
+
+            if ($related === null || !($related instanceof Model)) {
+                return [$relation => ['data' => ['type' => '', 'id' => null]]];
+            }
+
+            $typeMap = property_exists($model, 'jsonApiTypes') ? $model->jsonApiTypes : [];
+
+            $jsonApiType =  $typeMap[$relation] ?? Str::plural(Str::kebab(class_basename($related)));
+
+            return [
+                $jsonApiType => [
+                    'data' => [
+                        'type' => $jsonApiType,
+                        'id' => (string) $related->getRouteKey(),
+                    ],
+                ],
+            ];
+        })
+        ->filter(fn($rel) => $rel['data']['id'] !== null)
+        ->toArray();
+}
+
+function modelRelationNames(Model $model): array
+{
+    $reflection = new ReflectionClass($model);
+    return collect($reflection->getMethods(ReflectionMethod::IS_PUBLIC))
+        ->filter(fn($method) => 
+            $method->class === get_class($model) && 
+            $method->getNumberOfParameters() === 0 && 
+            is_a($method->invoke($model), Relation::class))
+        ->map(fn($method) => $method->getName())
+        ->values()
+        ->all();
+}
+
