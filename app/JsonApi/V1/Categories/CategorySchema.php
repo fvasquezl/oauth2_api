@@ -1,18 +1,18 @@
 <?php
 
-namespace App\JsonApi\V1\Articles;
+namespace App\JsonApi\V1\Categories;
 
-use App\Models\Article;
+use App\Models\Category;
 use LaravelJsonApi\Eloquent\Contracts\Paginator;
 use LaravelJsonApi\Eloquent\Fields\DateTime;
 use LaravelJsonApi\Eloquent\Fields\ID;
-use LaravelJsonApi\Eloquent\Fields\Relations\BelongsTo;
+use LaravelJsonApi\Eloquent\Fields\Relations\HasMany;
 use LaravelJsonApi\Eloquent\Fields\Str;
 use LaravelJsonApi\Eloquent\Filters\WhereIdIn;
 use LaravelJsonApi\Eloquent\Pagination\PagePagination;
 use LaravelJsonApi\Eloquent\Schema;
 
-class ArticleSchema extends Schema
+class CategorySchema extends Schema
 {
 
     /**
@@ -20,7 +20,7 @@ class ArticleSchema extends Schema
      *
      * @var string
      */
-    public static string $model = Article::class;
+    public static string $model = Category::class;
 
     /**
      * Get the resource fields.
@@ -31,14 +31,11 @@ class ArticleSchema extends Schema
     {
         return [
             ID::make(),
-            Str::make('title')->sortable(),
+            Str::make('name'),
             Str::make('slug'),
-            Str::make('content')->sortable(),
             DateTime::make('createdAt')->sortable()->readOnly(),
             DateTime::make('updatedAt')->sortable()->readOnly(),
-            BelongsTo::make('categories', 'category'),
-            BelongsTo::make('authors', 'user')
-                ->type('authors'),
+            HasMany::make('articles', 'article'),
         ];
     }
 
@@ -62,11 +59,6 @@ class ArticleSchema extends Schema
     public function pagination(): ?Paginator
     {
         return PagePagination::make();
-    }
-
-    public static function authorizer(): string
-    {
-        return ArticleAuthorizer::class;
     }
 
 }

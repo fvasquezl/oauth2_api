@@ -27,9 +27,10 @@ class Article extends Model
         return [
             'id' => 'integer',
             'category_id' => 'integer',
-            'user_id' => 'integer',
+            'user_id' => 'string',
         ];
     }
+    public array $jsonApiTypes = ['user' => 'authors'];
 
     public function category(): BelongsTo
     {
@@ -40,4 +41,5 @@ class Article extends Model
     {
         return $this->belongsTo(User::class);
     }
+
 }

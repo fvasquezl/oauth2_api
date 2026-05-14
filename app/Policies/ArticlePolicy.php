@@ -27,10 +27,10 @@ class ArticlePolicy
     /**
      * Determine whether the user can create models.
      */
-    public function create(User $user, Article $article): bool
+    public function create(User $user): bool
     {
-        return $user->hasPermissionTo('articles:create')
-        && $article->user->is($user);
+        return $user->hasPermissionTo('articles:store')
+        && (string) $user->getRouteKey() === (string) request()->input('data.relationships.authors.data.id');
     }
 
     /**

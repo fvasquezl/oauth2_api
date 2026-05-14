@@ -17,7 +17,11 @@ class ArticleRequest extends ResourceRequest
     public function rules(): array
     {
         return [
-            // @TODO
+            'title'      => ['required', 'string'],
+            'slug'       => ['required', 'string'],
+            'content'    => ['required', 'string'],
+            'authors'    => ['required', JsonApiRule::toOne()],
+            'categories' => ['required', JsonApiRule::toOne()],
         ];
     }
 

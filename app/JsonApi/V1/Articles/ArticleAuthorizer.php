@@ -31,8 +31,10 @@ class ArticleAuthorizer implements Authorizer
      * @return bool|Response
      */
     public function store(Request $request, string $modelClass): bool|Response
-    {
-        return $request->user() ? Gate::inspect('create', $modelClass) : false;
+    {     
+        $authorId = $request->json('data.relationships.authors.data.id');   
+        if ($authorId === null) return true;
+        return Gate::inspect('create', $modelClass);
     }
 
     /**

@@ -1,0 +1,2 @@
+#!/bin/bash
+docker exec oauth2_api-laravel.test-1 php "$@"

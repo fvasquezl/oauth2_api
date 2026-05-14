@@ -1,8 +1,10 @@
 <?php
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 /*
@@ -121,5 +123,14 @@ function modelRelationNames(Model $model): array
         ->map(fn($method) => $method->getName())
         ->values()
         ->all();
+}
+
+function userWithPermission(string $permission, ?User $user = null): User
+{
+    $user ??= User::factory()->create();
+
+    $user->givePermissionTo(Permission::findOrCreate($permission));
+
+    return $user;
 }
 

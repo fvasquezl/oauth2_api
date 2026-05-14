@@ -3,11 +3,13 @@
 use App\Models\Article;
 use App\Models\User;
 use Laravel\Passport\Passport;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 
-// beforeEach(function () {
-//     Permission::findOrCreate('articles:store', 'web');
-//     app(PermissionRegistrar::class)->forgetCachedPermissions();
-// });
+beforeEach(function () {
+    Permission::findOrCreate('articles:store', 'api');
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
+});
 
 it('guest users cannot create articles', function () {
     $data = jsonData(
@@ -156,8 +158,9 @@ it('relationship must be a valid type', function (string $relationship, string $
     $data['relationships'][$relationship] = [
         'data' => ['type' => $wrongType, 'id' => '1'],
     ];
+   
 
-    Passport::actingAs($article->user);
+    Passport::actingAs(userWithPermission('articles:store', $article->user));
 
     $this->jsonApi()
         ->withData($data)
