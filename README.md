@@ -305,19 +305,22 @@ function userWithPermission(string $permission, User $user): User
 
 ### Habilitar `$this->jsonApi()` en tests
 
-El trait `MakesJsonApiRequests` de `laravel-json-api/testing` debe aplicarse al `TestCase` base para que todos los tests de Pest tengan acceso al helper `jsonApi()`:
+El trait `MakesJsonApiRequests` de `laravel-json-api/testing` debe estar aplicado al `TestCase` para que `$this->jsonApi()` esté disponible en cualquier test. En este proyecto se aplica **globalmente** vía Pest (en lugar de editar `tests/TestCase.php`):
 
 ```php
-// tests/TestCase.php
+// tests/Pest.php
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use LaravelJsonApi\Testing\MakesJsonApiRequests;
+use Tests\TestCase;
 
-abstract class TestCase extends BaseTestCase
-{
-    use MakesJsonApiRequests;
-}
+pest()->extend(TestCase::class)
+    ->use(RefreshDatabase::class, MakesJsonApiRequests::class)
+    ->in('Feature');
 ```
 
-Sin este trait, los tests lanzan `Call to undefined method ::jsonApi()`.
+`->use(...)` acepta múltiples traits — aquí se aplican `RefreshDatabase` (reset de BD por test) y `MakesJsonApiRequests` (helpers JSON:API) a **todos** los tests de la carpeta `Feature/`. No hay que añadirlos archivo por archivo con `uses(...)`.
+
+Sin esto, los tests lanzan `Call to undefined method ::jsonApi()`.
 
 ### Helper `jsonData()`
 
@@ -501,54 +504,227 @@ Después de cualquier cambio en migraciones correr:
 
 > **Gotcha — `$guarded = []`:** Blueprint genera `$guarded = []` en los modelos (todo es asignable). El test de mass assignment manda `approved: true` y espera `400`. Para proteger `approved`, usar `$fillable` explícito o `$guarded = ['approved']`.
 
-## Entorno de desarrollo
+## Entorno de desarrollo — Dev Container
 
-### Correr tests desde VS Code (Better Pest + Sail)
+### El problema que resuelve
 
-PHP Tools (Devsense) corre PHP localmente y no puede resolver el hostname `mysql` de Docker. La solución es usar la extensión **Better Pest** configurada para ejecutar dentro del contenedor Sail.
+Con Sail puro, PHP y MySQL viven **dentro** de containers Docker. Si abres VS Code en el host (tu Arch Linux), las extensiones (Intelephense, debuggers, runners de tests) intentan ejecutar `php` localmente:
 
-**Configuración en `.vscode/settings.json`:**
-
-```json
-{
-    "better-pest.docker.enable": true,
-    "better-pest.docker.command": "docker exec oauth2_api-laravel.test-1",
-    "better-pest.docker.paths": {
-        "/home/fvasquez/Code/SAIL/oauth2_api": "/var/www/html"
-    }
-}
+```
+VS Code (host)  →  php (host, no existe)  →  ❌
+                →  php artisan migrate  →  DB_HOST=mysql no resuelve → ❌
 ```
 
-Better Pest construye el comando: `docker exec oauth2_api-laravel.test-1 ./vendor/bin/pest --filter="..."`, que corre dentro del contenedor donde `mysql` resuelve correctamente.
+Posibles soluciones para correr tests desde el IDE:
+1. Instalar PHP 8.5 en el host y cambiar `DB_HOST=127.0.0.1` — fragmenta el entorno.
+2. Usar una extensión que envuelva los comandos con `./vendor/bin/sail exec` — funciona pero es lento y frágil.
+3. **Hacer que VS Code se ejecute *dentro* del container** — solución limpia: el editor "vive" donde está PHP y MySQL.
 
-**`.vscode/settings.json` completo:**
+La opción 3 es lo que hace **Dev Containers** (extensión `ms-vscode-remote.remote-containers` de Microsoft).
 
-```json
+### Cómo funciona Dev Containers con Sail
+
+```
+┌─ host (Arch Linux) ─────────────────────────────┐
+│  VS Code GUI                                     │
+│   ↕ (canal remoto)                               │
+│  ┌─ container laravel.test ──────────────────┐  │
+│  │  VS Code Server (corre dentro del container)│  │
+│  │  + Intelephense, Pest runner, Xdebug...    │  │
+│  │  + terminal integrado → /var/www/html      │  │
+│  │  + PHP 8.5, composer, artisan              │  │
+│  │  ↕                                          │  │
+│  │  mysql (otro container del mismo network)   │  │
+│  └────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────┘
+```
+
+VS Code en el host se conecta vía un protocolo remoto a una instancia de VS Code Server que arranca **dentro** del container `laravel.test`. Las extensiones, terminales y procesos (Pest, PHP, debugger) corren ahí dentro, donde `mysql` resuelve por DNS de Docker y `php` está en el `$PATH`.
+
+### Archivos involucrados
+
+```
+.devcontainer/
+└── devcontainer.json    ← configuración del entorno
+
+.vscode/
+└── settings.json        ← settings específicos del proyecto (ignored)
+
+.env
+└── WWWUSER, WWWGROUP    ← requeridos para el build inicial
+```
+
+### `.devcontainer/devcontainer.json`
+
+```jsonc
 {
-    "better-pest.docker.enable": true,
-    "better-pest.docker.command": "docker exec oauth2_api-laravel.test-1",
-    "better-pest.docker.paths": {
-        "/home/fvasquez/Code/SAIL/oauth2_api": "/var/www/html"
+    "name": "Laravel Sail (oaut2_api)",
+
+    // Reusa el compose.yaml que ya tiene Sail (Sail 11+ renombró docker-compose.yml → compose.yaml)
+    "dockerComposeFile": ["../compose.yaml"],
+
+    // El servicio del stack al que VS Code se "enchufa"
+    "service": "laravel.test",
+
+    // Sail monta el proyecto en esta ruta dentro del container
+    "workspaceFolder": "/var/www/html",
+
+    // Usuario no-root creado por la imagen de Sail (UID 1000)
+    "remoteUser": "sail",
+
+    // XDEBUG_TRIGGER=1 en cada terminal del container — Xdebug intenta conectar a debugger por cada request
+    "remoteEnv": {
+        "XDEBUG_TRIGGER": "1"
     },
-    "php.testExplorer": false,
-    "php.codeLens.enabled": false
+
+    // No tumbes los containers cuando cierres VS Code
+    "shutdownAction": "none",
+
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "laravel.vscode-laravel",                     // oficial de Laravel
+                "recca0120.vscode-phpunit",                   // iconos ▶ en el margen para correr tests
+                "bmewburn.vscode-intelephense-client",        // language server PHP (Go to Def, refactor, diagnostics)
+                "xdebug.php-debug",                           // step debugger
+                "amiralizadeh9480.laravel-extra-intellisense",// autocompletado Laravel
+                "DEVSENSE.intelli-php-vscode"                 // AI completions (complementario, no reemplaza Intelephense)
+            ],
+            "settings": {
+                "php.validate.executablePath": "/usr/bin/php",
+                "php.debug.executablePath": "/usr/bin/php"
+            }
+        }
+    },
+
+    // Reenviar puertos del container al host
+    "forwardPorts": [80, 5173, 9003]
 }
 ```
 
-- `php.testExplorer: false` — desactiva el test explorer de PHP Tools (evita errores de conexión a MySQL en background)
-- `php.codeLens.enabled: false` — quita los botones ▶ inline junto a cada test
+### Variables obligatorias en `.env`
 
-> Si `php.codeLens.enabled: false` deshabilita otras funciones útiles de PHP Tools (como go-to-definition), se puede volver a `true` y convivir con los botones rojos ignorándolos.
+```dotenv
+WWWUSER=1000
+WWWGROUP=1000
+```
 
-**Atajos de teclado** (`~/.config/Code/User/keybindings.json`):
+> **Por qué.** El `Dockerfile` (`docker/8.5/Dockerfile`) ejecuta `groupadd --force -g $WWWGROUP sail` para crear el usuario interno con el mismo GID que el del host (así los archivos creados desde el container tienen permisos correctos al verlos desde el host).
+>
+> El script `./vendor/bin/sail` inyecta `WWWUSER` y `WWWGROUP` al vuelo cuando haces `sail up`, leyendo `id -u` / `id -g`. Pero **Dev Containers llama a `docker compose build` directamente, sin pasar por ese wrapper**. Si esas variables no están en `.env`, recibe `$WWWGROUP=""` y `groupadd -g ""` falla con `invalid group ID`.
 
-| Atajo | Acción |
-|-------|--------|
-| `Ctrl+Shift+F10` | Test bajo el cursor |
-| `Shift+Meta+F10` | Todos los tests del archivo |
-| `Shift+F10` | Repetir último test |
+### Cómo entrar al Dev Container
 
-> **Setting que NO existe en Better Pest 0.1.0:** `better-pest.phpExecutable` — no está en el `package.json` de esta versión. Usar el bloque `docker.*` en su lugar.
+1. Asegurarse que Sail esté arriba: `./vendor/bin/sail up -d`
+2. Instalar la extensión Dev Containers (`ms-vscode-remote.remote-containers`) en VS Code.
+3. `Ctrl+Shift+P` → **"Dev Containers: Reopen in Container"**.
+4. Primer arranque tarda 2-5 min (descarga e instala las extensiones dentro del container).
+
+Cuando estás dentro, la barra de estado abajo a la izquierda muestra:
+
+```
+>< Dev Container: Laravel Sail (oaut2_api)
+```
+
+Y al abrir un terminal (`Ctrl+~`) el prompt es:
+
+```
+sail@5b46a179c62e:/var/www/html$
+```
+
+Dentro del container:
+- `php`, `artisan`, `composer`, `pest` funcionan **sin** el prefijo `./vendor/bin/sail`.
+- `mysql` resuelve al servicio de Docker.
+- El path del binario PHP es `/usr/bin/php` (symlink a la versión actual, ej. `php8.5`).
+
+### Correr tests desde VS Code (Recca0120)
+
+La extensión `recca0120.vscode-phpunit` pinta iconos ▶ al lado de cada `it(...)` / `test(...)` en archivos Pest. Click → corre ese test específico, output a la pestaña **TERMINAL**.
+
+**Por defecto, la extensión auto-detecta `vendor/bin/sail` en el proyecto y envuelve los comandos en `./vendor/bin/sail exec` — eso falla dentro del Dev Container porque ahí no hay Docker daemon.** Para neutralizar esa auto-detección, en `.vscode/settings.json` del proyecto:
+
+```jsonc
+{
+    "phpunit.command": "",                                  // sin wrapper — llama a pest directo
+    "phpunit.php": "/usr/bin/php",                          // binario PHP del container
+    "phpunit.phpunit": "/var/www/html/vendor/bin/pest",     // usa Pest, no PHPUnit
+    "phpunit.args": ["--colors=always"]
+}
+```
+
+> **Por qué `phpunit.command: ""`:** la extensión por convención prepara `<command> <php> <phpunit> <args>`. Con `command` vacío, no antepone nada — el comando real ejecutado es `php /var/www/html/vendor/bin/pest --colors=always tests/Feature/Articles/CreateArticlesTest.php --filter="..."`. Si lo dejas con `./vendor/bin/sail`, te da `Docker or Podman is not running` dentro del Dev Container.
+
+**`.vscode/` está en `.gitignore`** (default de Laravel) — `.vscode/settings.json` no se versiona. Cualquiera que clone el repo debe crear este archivo manualmente con el contenido de arriba.
+
+### Extensiones — por qué cada una
+
+| Extensión | Rol | Notas |
+|-----------|-----|-------|
+| `laravel.vscode-laravel` | Oficial de Laravel — soporte para Blade, rutas, model schemas | Al arrancar prueba `which herd`, `which valet`, `docker info`, etc. y loggea "not found" en stderr — **ignorar**, es su detección normal de entornos |
+| `recca0120.vscode-phpunit` | Iconos ▶ del Glyph Margin para correr tests | Otras alternativas probadas y descartadas: `pestphp.pest-vscode` no existe; `m1guelpf.better-pest` no pone iconos (solo atajos de teclado) |
+| `bmewburn.vscode-intelephense-client` | Language server PHP — diagnostics, navegación, refactors | **No confundir con IntelliPHP.** Intelephense entiende el código (parsing, símbolos); IntelliPHP solo sugiere autocompletado con IA. Son complementarias |
+| `xdebug.php-debug` | Step debugger (breakpoints, watch, call stack) | Configurado con `XDEBUG_TRIGGER=1` para activarse on-demand |
+| `amiralizadeh9480.laravel-extra-intellisense` | Autocompletado de rutas, vistas, configs, traducciones | Específico de Laravel — complementa Intelephense |
+| `DEVSENSE.intelli-php-vscode` | AI completions para PHP (gratis) | Estilo Copilot. No reemplaza al language server |
+
+### Xdebug
+
+`docker/8.5/php.ini` (custom) habilita Xdebug en modo trigger:
+
+```ini
+[xdebug]
+xdebug.mode=develop,debug
+xdebug.client_host=host.docker.internal
+xdebug.client_port=9003
+xdebug.start_with_request=trigger
+```
+
+- **`develop`** — mejor `var_dump`, stacktraces ricos.
+- **`debug`** — habilita el step debugger.
+- **`start_with_request=trigger`** — Xdebug solo arranca cuando llega un trigger (cookie/header/env `XDEBUG_TRIGGER`). Sin trigger, no se activa y no impacta rendimiento.
+
+El `devcontainer.json` declara `"remoteEnv": { "XDEBUG_TRIGGER": "1" }` — eso significa que **cada ejecución de PHP dentro del container** activa el trigger y Xdebug intenta conectar al puerto 9003 del host. Para depurar, basta arrancar una sesión "Listen for Xdebug" desde VS Code y poner un breakpoint.
+
+> **Trade-off del `XDEBUG_TRIGGER=1` permanente.** Si NO tienes la sesión "Listen for Xdebug" corriendo, cada `php` (incluyendo cada test) imprime:
+> ```
+> Xdebug: [Step Debug] Could not connect to debugging client.
+> Tried: host.docker.internal:9003
+> ```
+> Es inofensivo pero ruidoso. Además, con `xdebug.mode=develop,debug` cargado, los tests corren ~3× más lento (el bootstrap de PHP carga la extensión aunque no se use). Para tests rápidos y sin warnings: ejecutar puntualmente con `php -d xdebug.mode=off vendor/bin/pest ...`.
+
+> **Sobre `xdebug.client_host`.** El valor en `php.ini` es **irrelevante** porque `compose.yaml` exporta `XDEBUG_CONFIG=client_host=host.docker.internal` como variable de entorno, que sobrescribe lo del `.ini`. El `extra_hosts` mapping del `compose.yaml` (`'host.docker.internal:host-gateway'`) hace que ese hostname resuelva al gateway del host desde dentro del container.
+
+### Pitfalls del Dev Container
+
+- **Después de cambiar `extensions` o `remoteEnv` en `devcontainer.json`:** no basta con "Reload Window", hay que hacer **Dev Containers: Rebuild Container**.
+- **El CLI `sail` sigue funcionando** dentro del Dev Container pero es redundante — ya estás en el container, `php artisan` directo es suficiente.
+- **Falsos positivos de Intelephense** en Pest: `$this->jsonApi()`, `$this->assertDatabaseEmpty()` aparecen como undefined porque Intelephense no entiende el binding dinámico de `$this` que hace Pest dentro de `it(...)`. Los tests corren bien; si el ruido molesta, añadir al inicio del archivo:
+  ```php
+  /** @var \Tests\TestCase $this */
+  ```
+- **Ruido del Laravel extension** al arrancar: imprime "not found" para herd, valet, lando, ddev, docker. **Ignorar** — es su sondeo normal de entornos de desarrollo.
+
+### Comandos comunes dentro del Dev Container
+
+```bash
+# Sin prefijo sail — ya estás dentro
+php artisan migrate
+php artisan test
+vendor/bin/pest --filter='guest users cannot create articles'
+
+# Comparar velocidad con/sin Xdebug
+php -d xdebug.mode=off vendor/bin/pest         # ~3× más rápido
+```
+
+### Setup desde cero — checklist
+
+1. [ ] Docker corriendo en el host.
+2. [ ] Extensión `ms-vscode-remote.remote-containers` instalada en VS Code (host).
+3. [ ] `.env` contiene `WWWUSER=1000` y `WWWGROUP=1000` (ajustar a tu UID/GID con `id -u && id -g`).
+4. [ ] `./vendor/bin/sail up -d` corrió sin error.
+5. [ ] `Ctrl+Shift+P` → "Dev Containers: Reopen in Container" — espera al build.
+6. [ ] Crear `.vscode/settings.json` con el contenido de la sección "Correr tests desde VS Code".
+7. [ ] Abrir un test, click ▶ — debe correr **una sola vez** y pasar.
 
 ## Estado de los tests — `CreateArticlesTest.php`
 

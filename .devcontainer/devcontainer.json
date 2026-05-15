@@ -1,0 +1,42 @@
+{
+    "name": "Laravel Sail (oaut2_api)",
+    // Reusa el docker-compose.yml que Sail ya tiene
+    "dockerComposeFile": [
+        "../compose.yaml"
+    ],
+    // El servicio del stack al que VS Code se va a "enchufar"
+    "service": "laravel.test",
+    // Sail monta el proyecto en /var/www/html dentro del container
+    "workspaceFolder": "/var/www/html",
+    // Usuario no-root creado por la imagen de Sail (UID 1000)
+    "remoteUser": "sail",
+    // Debuger in cotainer
+    "remoteEnv": {
+        "XDEBUG_TRIGGER": "1"
+    },
+    // No tumbes el container cuando cierres VS Code
+    "shutdownAction": "none",
+    // Extensiones que se instalan DENTRO del container
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "laravel.vscode-laravel",
+                "recca0120.vscode-phpunit",
+                "bmewburn.vscode-intelephense-client",
+                "xdebug.php-debug",
+                "amiralizadeh9480.laravel-extra-intellisense",
+                "DEVSENSE.intelli-php-vscode"
+            ],
+            "settings": {
+                "php.validate.executablePath": "/usr/bin/php",
+                "php.debug.executablePath": "/usr/bin/php"
+            }
+        }
+    },
+    // Reenviar puertos útiles del container al host
+    "forwardPorts": [
+        80,
+        5173,
+        9003
+    ]
+}
